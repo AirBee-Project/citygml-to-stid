@@ -10,7 +10,6 @@ pub fn parse_code_space(path: PathBuf) -> Result<HashMap<String, String>, Box<dy
     let mut buf = Vec::new();
     let mut map = HashMap::new();
 
-    // 状態管理用
     let mut in_name = false;
     let mut in_desc = false;
     let mut current_name = String::new();
@@ -29,7 +28,6 @@ pub fn parse_code_space(path: PathBuf) -> Result<HashMap<String, String>, Box<dy
                 match e.local_name().as_ref() {
                     b"name" => in_name = false,
                     b"description" => in_desc = false,
-                    // Definition 終了時にまとめて登録
                     b"Definition" => {
                         if !current_name.is_empty() && !current_desc.is_empty() {
                             map.insert(current_name.clone(), current_desc.clone());

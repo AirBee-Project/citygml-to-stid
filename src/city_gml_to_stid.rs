@@ -18,7 +18,6 @@ pub struct BuildingInfo {
     pub attribute_info_map: HashMap<String, String>,
 }
 
-/// 最初の bldg:Building の情報を抽出
 pub fn first_building_info() -> Result<Option<BuildingInfo>, Box<dyn Error>> {
     let base_dir = Path::new("CityData")
         .join("10201_maebashi-shi_city_2023_citygml_2_op")
@@ -65,7 +64,7 @@ pub fn first_building_info() -> Result<Option<BuildingInfo>, Box<dyn Error>> {
                 current_tag = Some(tag_name.clone());
                 let attrs: Vec<_> = e.attributes().filter_map(|a| a.ok()).collect();
 
-                // bldg:Building 開始
+                // bldg:Building タグ開始
                 if tag_name.as_slice() == b"bldg:Building" && !in_building {
                     in_building = true;
                     for a in &attrs {
@@ -75,7 +74,7 @@ pub fn first_building_info() -> Result<Option<BuildingInfo>, Box<dyn Error>> {
                     }
                 }
 
-                // uro:BuildingDetailAttribute 開始
+                // uro:BuildingDetailAttributeタグ 開始（このタグの中身は属性情報）
                 if re_uro.is_match(&tag_name) {
                     in_uro = true;
                     current_code_space_path = attrs.iter().find_map(|a| {
@@ -101,7 +100,6 @@ pub fn first_building_info() -> Result<Option<BuildingInfo>, Box<dyn Error>> {
                     let text_val = t.decode()?.into_owned();
 
                     if in_uro {
-                        // uro:BuildingDetailAttribute 内のテキスト
                         if let Some(abs_path) = &current_code_space_path {
                             let code_map = parse_code_space(abs_path.clone())?;
                             let name = code_map.get(&text_val).unwrap_or(&text_val);
@@ -115,7 +113,6 @@ pub fn first_building_info() -> Result<Option<BuildingInfo>, Box<dyn Error>> {
                         }
                     } else if let Some(tag_name) = &current_tag {
                         if tag_name.as_slice() == b"gml:posList" {
-                            // posList のテキストだけ処理
                             let points = parse_points(&text_val)?;
                             buildinginfo
                                 .stid_set
@@ -143,7 +140,7 @@ pub fn first_building_info() -> Result<Option<BuildingInfo>, Box<dyn Error>> {
                     save_building_info_json(building_count, &buildinginfo)?;
                     building_count += 1;
                     in_building = false;
-                    in_uro = false;
+                    in_uro = false; //現在、一周しかしてないのでflagの意味がないが、複数買いまわすことになった時に使う(はず)
                     break; // 最初の Building だけ処理
                 }
             }
@@ -217,4 +214,3 @@ fn save_building_info_json(count: i32, building_info: &BuildingInfo) -> Result<(
     Ok(())
 }
 
-fn addAttributeInfo() {}
