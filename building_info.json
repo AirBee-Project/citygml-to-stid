@@ -1,0 +1,36 @@
+{
+  "0": {
+    "attributes": {
+      "uro:adminType": "都道府県",
+      "uro:appearanceSrcDescLod2": "未作成",
+      "uro:areaClassificationType": "市街化区域",
+      "uro:buildingStructureType": "非木造",
+      "uro:city": "群馬県前橋市",
+      "uro:codeValue": "垂直避難不可能",
+      "uro:description": "利根川水系利根川",
+      "uro:districtsAndZonesType": "第1種低層住居専用地域",
+      "uro:geometrySrcDescLod0": "公共測量成果又は基本測量成果",
+      "uro:geometrySrcDescLod1": "公共測量成果又は基本測量成果",
+      "uro:geometrySrcDescLod2": "未作成",
+      "uro:key": "垂直避難",
+      "uro:landUseType": "住宅用地（住宅、共同住宅、店舗等併用住宅、店舗等併用共同住宅、作業所併用住宅）",
+      "uro:lod1HeightType": "点群から取得_中央値",
+      "uro:prefecture": "群馬県",
+      "uro:publicSurveySrcDescLod0": "数値地形図データ",
+      "uro:publicSurveySrcDescLod1": "数値地形図データ",
+      "uro:rank": "0.5m以上3m未満",
+      "uro:scale": "L2（想定最大規模）",
+      "uro:srcScaleLod0": "地図情報レベル2500",
+      "uro:srcScaleLod1": "地図情報レベル2500",
+      "uro:thematicSrcDesc": "都市計画図書",
+      "uro:urbanPlanType": "都市計画区域"
+    },
+    "id": "bldg_2ee5e488-29fb-4b2d-ac6b-3f0a1d43908d",
+    "stid_set": [
+      "18/0/232357/102647_0/-",
+      "18/0/232358/102647_0/-",
+      "18/-1/232357/102647_0/-",
+      "18/-1/232358/102647_0/-"
+    ]
+  }
+}
