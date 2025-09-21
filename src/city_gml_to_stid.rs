@@ -151,9 +151,9 @@ pub fn first_building_info() -> Result<Option<BuildingInfo>, Box<dyn Error>> {
             }
         }
         
-        // if file_count==5 {
-        //     break;
-        // }
+        if file_count == 1 {
+            break;
+        }
         
     }
 
