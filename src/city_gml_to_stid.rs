@@ -20,7 +20,8 @@ pub struct BuildingInfo {
 
 pub fn first_building_info() -> Result<Option<BuildingInfo>, Box<dyn Error>> {
     let base_dir = Path::new("CityData")
-        .join("10201_maebashi-shi_city_2023_citygml_2_op")
+        // .join("10201_maebashi-shi_city_2023_citygml_2_op")
+        .join("13109_shinagawa-ku_city_2024_citygml_1_op")
         .join("udx")
         .join("bldg");
 
@@ -116,7 +117,7 @@ pub fn first_building_info() -> Result<Option<BuildingInfo>, Box<dyn Error>> {
                             let points = parse_points(&text_val)?;
                             buildinginfo
                                 .stid_set
-                                .extend(citygml_polygon_to_ids(18, &points));
+                                .extend(citygml_polygon_to_ids(22, &points));
                         }
                     }
                 }
