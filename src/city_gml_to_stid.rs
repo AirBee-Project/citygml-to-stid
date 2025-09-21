@@ -7,7 +7,7 @@ use std::collections::{HashMap, HashSet};
 use quick_xml::{events::Event, reader::Reader};
 use serde_json::{Value, json};
 use std::error::Error;
-use std::fs::{self, File, OpenOptions};
+use std::fs::{self, create_dir_all, File, OpenOptions};
 use std::io::{BufReader, Read, Write};
 use std::path::{Path, PathBuf};
 
@@ -18,6 +18,7 @@ pub struct BuildingInfo {
     pub attribute_info_map: HashMap<String, String>,
 }
 
+//first って言ってるがbreakを外したら何周もするし、それがメインなので名前を変えるべきかも。
 pub fn first_building_info() -> Result<Option<BuildingInfo>, Box<dyn Error>> {
     let base_dir = Path::new("CityData")
         // .join("10201_maebashi-shi_city_2023_citygml_2_op")
@@ -25,133 +26,157 @@ pub fn first_building_info() -> Result<Option<BuildingInfo>, Box<dyn Error>> {
         .join("udx")
         .join("bldg");
 
-    let file_path: PathBuf = fs::read_dir(&base_dir)?
-        .filter_map(|entry| {
-            let entry = entry.ok()?;
-            let path = entry.path();
-            if path.extension().is_some_and(|ext| ext == "gml") {
-                Some(path)
-            } else {
-                None
-            }
-        })
-        .next()
-        .ok_or_else(|| format!("No .gml files found in {:?}", base_dir))?;
+    let mut file_count = 0;
+    for entry in fs::read_dir(&base_dir)? {
+        
+        let entry = entry?;
+        let file_path = entry.path();
+        // println!("{:?}", file_path);
+        if file_path.extension().is_some_and(|ext| ext == "gml") {
+            file_count += 1;
+            let file = File::open(&file_path)?;
+            let mut reader = Reader::from_reader(BufReader::new(file));
+            reader.config_mut().trim_text(true);
 
-    let file = File::open(&file_path)?;
-    let mut reader = Reader::from_reader(BufReader::new(file));
-    reader.config_mut().trim_text(true);
+            let mut buf = Vec::<u8>::new();
+            let mut in_building = false;
+            let mut in_uro = false;
+            let mut current_code_space_path: Option<PathBuf> = None;
 
-    let mut buf = Vec::<u8>::new();
-    let mut in_building = false;
-    let mut in_uro = false;
-    let mut current_code_space_path: Option<PathBuf> = None;
+            let mut building_count = 0;
+            let mut buildinginfo = BuildingInfo {
+                building_id: String::new(),
+                stid_set: HashSet::new(),
+                attribute_info_map: HashMap::new(),
+            };
 
-    let mut building_count = 0;
-    let mut buildinginfo = BuildingInfo {
-        building_id: String::new(),
-        stid_set: HashSet::new(),
-        attribute_info_map: HashMap::new(),
-    };
+            let re_uro = Regex::new(r"^uro:.*$").unwrap();
+            let mut current_tag: Option<Vec<u8>> = None;
 
-    let re_uro = Regex::new(r"^uro:.*$").unwrap();
-    let mut current_tag: Option<Vec<u8>> = None;
+            loop {
+                let ev = reader.read_event_into(&mut buf)?;
+                match ev {
+                    Event::Start(e) => {
+                        let tag_name: Vec<u8> = e.name().as_ref().to_vec();
+                        current_tag = Some(tag_name.clone());
+                        let attrs: Vec<_> = e.attributes().filter_map(|a| a.ok()).collect();
 
-    loop {
-        let ev = reader.read_event_into(&mut buf)?;
-        match ev {
-            Event::Start(e) => {
-                let tag_name: Vec<u8> = e.name().as_ref().to_vec();
-                current_tag = Some(tag_name.clone());
-                let attrs: Vec<_> = e.attributes().filter_map(|a| a.ok()).collect();
-
-                // bldg:Building タグ開始
-                if tag_name.as_slice() == b"bldg:Building" && !in_building {
-                    in_building = true;
-                    for a in &attrs {
-                        if a.key.as_ref() == b"gml:id" {
-                            buildinginfo.building_id = a.unescape_value()?.to_string();
-                        }
-                    }
-                }
-
-                // uro:BuildingDetailAttributeタグ 開始（このタグの中身は属性情報）
-                if re_uro.is_match(&tag_name) {
-                    in_uro = true;
-                    current_code_space_path = attrs.iter().find_map(|a| {
-                        if a.key.as_ref() == b"codeSpace" {
-                            Some(
-                                file_path
-                                    .parent()
-                                    .unwrap_or_else(|| Path::new("."))
-                                    .join(a.unescape_value().ok()?.as_ref())
-                                    .canonicalize()
-                                    .ok()?,
-                            )
-                        } else {
-                            None
-                        }
-                    });
-                }
-
-                // gml:posList, measuredHeight, yearOfConstruction は Text で処理
-            }
-            Event::Text(t) => {
-                if in_building {
-                    let text_val = t.decode()?.into_owned();
-
-                    if in_uro {
-                        if let Some(abs_path) = &current_code_space_path {
-                            let code_map = parse_code_space(abs_path.clone())?;
-                            let name = code_map.get(&text_val).unwrap_or(&text_val);
-                            if let Some(tag_bytes) = &current_tag {
-                                if let Ok(tag_str) = std::str::from_utf8(tag_bytes) {
-                                    buildinginfo
-                                        .attribute_info_map
-                                        .insert(tag_str.to_string(), name.clone());
+                        // bldg:Building タグ開始
+                        if tag_name.as_slice() == b"bldg:Building" && !in_building {
+                            in_building = true;
+                            for a in &attrs {
+                                if a.key.as_ref() == b"gml:id" {
+                                    buildinginfo.building_id = a.unescape_value()?.to_string();
                                 }
                             }
                         }
-                    } else if let Some(tag_name) = &current_tag {
-                        if tag_name.as_slice() == b"gml:posList" {
-                            let points = parse_points(&text_val)?;
-                            buildinginfo
-                                .stid_set
-                                .extend(citygml_polygon_to_ids(22, &points));
+
+                        // uro:BuildingDetailAttributeタグ 開始（このタグの中身は属性情報）
+                        if re_uro.is_match(&tag_name) {
+                            in_uro = true;
+                            current_code_space_path = attrs.iter().find_map(|a| {
+                                if a.key.as_ref() == b"codeSpace" {
+                                    Some(
+                                        file_path
+                                            .parent()
+                                            .unwrap_or_else(|| Path::new("."))
+                                            .join(a.unescape_value().ok()?.as_ref())
+                                            .canonicalize()
+                                            .ok()?,
+                                    )
+                                } else {
+                                    None
+                                }
+                            });
+                        }
+
+                        // gml:posList, measuredHeight, yearOfConstruction は Text で処理
+                    }
+                    Event::Text(t) => {
+                        if in_building {
+                            let text_val = t.decode()?.into_owned();
+
+                            if in_uro {
+                                if let Some(abs_path) = &current_code_space_path {
+                                    let code_map = parse_code_space(abs_path.clone())?;
+                                    let name = code_map.get(&text_val).unwrap_or(&text_val);
+                                    if let Some(tag_bytes) = &current_tag {
+                                        if let Ok(tag_str) = std::str::from_utf8(tag_bytes) {
+                                            buildinginfo
+                                                .attribute_info_map
+                                                .insert(tag_str.to_string(), name.clone());
+                                        }
+                                    }
+                                }
+                            } else if let Some(tag_name) = &current_tag {
+                                if tag_name.as_slice() == b"gml:posList" {
+                                    let points = parse_points(&text_val)?;
+                                    buildinginfo
+                                        .stid_set
+                                        .extend(citygml_polygon_to_ids(22, &points));
+                                }
+                            }
                         }
                     }
-                }
-            }
-            Event::End(e) => {
-                let name = e.name();
-                let tag_name = name.as_ref();
+                    Event::End(e) => {
+                        let name = e.name();
+                        let tag_name = name.as_ref();
 
-                if let Some(tag_name) = &current_tag {
-                    if tag_name.as_slice() == e.name().as_ref() {
-                        current_tag = None;
+                        if let Some(tag_name) = &current_tag {
+                            if tag_name.as_slice() == e.name().as_ref() {
+                                current_tag = None;
+                            }
+                        }
+
+                        if in_uro && re_uro.is_match(tag_name) {
+                            in_uro = false;
+                            current_code_space_path = None;
+                        }
+
+                        if in_building && tag_name == b"bldg:Building" {
+                            save_building_info_json(building_count, &buildinginfo, format!("{}_stid", file_count))?;
+                            building_count += 1;
+                            in_building = false;
+                            in_uro = false; //現在、一周しかしてないのでflagの意味がないが、複数買いまわすことになった時に使う(はず)
+                            
+                            
+                            
+                            // break; // 最初の Building だけ処理
+                        }
                     }
+                    Event::Eof => break,
+                    _ => {}
                 }
-
-                if in_uro && re_uro.is_match(tag_name) {
-                    in_uro = false;
-                    current_code_space_path = None;
-                }
-
-                if in_building && tag_name == b"bldg:Building" {
-                    save_building_info_json(building_count, &buildinginfo)?;
-                    building_count += 1;
-                    in_building = false;
-                    in_uro = false; //現在、一周しかしてないのでflagの意味がないが、複数買いまわすことになった時に使う(はず)
-                    break; // 最初の Building だけ処理
-                }
+                buf.clear();
             }
-            Event::Eof => break,
-            _ => {}
         }
-        buf.clear();
+        
+        // if file_count==5 {
+        //     break;
+        // }
+        
     }
 
-    Ok(Some(buildinginfo))
+    // let file_path: PathBuf = fs::read_dir(&base_dir)?
+    //     .filter_map(|entry| {
+    //         let entry = entry.ok()?;
+    //         let path = entry.path();
+    //         if path.extension().is_some_and(|ext| ext == "gml") {
+    //             Some(path)
+    //         } else {
+    //             None
+    //         }
+    //     })
+    //     .next()
+    //     .ok_or_else(|| format!("No .gml files found in {:?}", base_dir))?;
+
+    // Ok(Some(buildinginfo))
+    //複数回回すとなると、何返せばいいかわかんないので、いったん適当
+    Ok(Some(BuildingInfo {
+        building_id: "end".to_string(),
+        stid_set: HashSet::new(),
+        attribute_info_map: HashMap::new(),
+    }))
 }
 
 fn citygml_polygon_to_ids(z: u8, vertices: &[Point]) -> HashSet<SpaceTimeId> {
@@ -186,9 +211,17 @@ pub fn parse_points(input: &str) -> Result<Vec<Point>, Box<dyn std::error::Error
         .collect())
 }
 
-fn save_building_info_json(count: i32, building_info: &BuildingInfo) -> Result<(), Box<dyn Error>> {
-    let path = "building_info.json";
-    let mut existing: Value = if let Ok(mut f) = File::open(path) {
+fn save_building_info_json(
+    count: i32,
+    building_info: &BuildingInfo,
+    export_name: String,
+) -> Result<(), Box<dyn Error>> {
+    let dir_path = Path::new("stid_json");
+    create_dir_all(dir_path)?;
+
+    let file_path = dir_path.join(format!("{}.json", export_name));
+
+    let mut existing: Value = if let Ok(mut f) = File::open(&file_path) {
         let mut buf = String::new();
         f.read_to_string(&mut buf)?;
         if buf.trim().is_empty() {
@@ -210,8 +243,7 @@ fn save_building_info_json(count: i32, building_info: &BuildingInfo) -> Result<(
         .write(true)
         .create(true)
         .truncate(true)
-        .open(path)?;
+        .open(file_path)?;
     f.write_all(existing.to_string().as_bytes())?;
     Ok(())
 }
-
